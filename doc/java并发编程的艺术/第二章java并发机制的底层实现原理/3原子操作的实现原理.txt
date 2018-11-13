@@ -1,0 +1,42 @@
+自旋cas实现的基本思路就是循环进行cas操作直到成功为止。
+cas实现原子操作的三大问题：
+	1、aba问题：因为cas需要在操作值的时候，检查值有没有发生变化，如果没有发生变化则更新，但是如果一个值原来是a，变成了b，又变成了
+	a，那么使用cas进行检查时会发现他的值没有变化，但是实际上却变化了，aba问题的解决思路是使用版本号，在变量前面追加上版本号，每次
+	变量更新的时候版本号加1，那么a-b-a就会变成a1-b2-a3.从1.5开始，jdk的Atomic包里提供了一个类AtomicStampedReference来解决
+	aba问题。这个类的compareAndSet方法的作用是首先检查当前引用是否等于预期引用，并且检查当前标志是否等于预期标志，如果全部相等，
+	则以原子方式将该引用和该标志设置为给定的更新值。
+	2、循环时间长开销大。
+	3、只能保证一个共享变量的原子操作：当对一个共享变量执行操作时，我们可以使用循环cas的方式来保证原子操作，但是对多个共享变量操作
+	时，循环cas就无法保证操作的原子性，这个时候就可以用锁。还有一个取巧的办法，就是把多个共享变量合并成一个共享变量来操作。然后用
+	cas来操作。jdk提供了AtomicReference类来保证引用对象之间的原子性，就可以把多个变量放在一个对象里来进行cas操作。
+
+AtomicInteger类compareAndSet通过原子操作实现了CAS操作，最底层基于汇编语言实现。
+简单说一下原子操作的概念，“原子”代表最小的单位，所以原子操作可以看做最小的执行单位，该操作在执行完毕前不会被任何其他任务或事件打断。
+CAS是Compare And Set的一个简称，如下理解：
+	1，已知当前内存里面的值current和预期要修改成的值new传入
+	2，内存中AtomicInteger对象地址对应的真实值(因为有可能别修改)real与current对比，
+	相等表示real未被修改过，是“安全”的，将new赋给real结束然后返回；不相等说明real已经被修改，结束并重新执行1直到修改成功。
+CAS相比Synchronized，避免了锁的使用，总体性能比Synchronized高很多.
+compareAndSet典型使用为计数，如i++,++i,这里以i++为例：
+	[java] view plain copy
+	/**
+	 * Atomically increments by one the current value.
+	 *
+	 * @return the updated value
+	 */
+	public final int incrementAndGet() {
+	    for (;;) {
+	        //获取当前值
+	        int current = get();
+	        //设置期望值
+	        int next = current + 1;
+	        //调用Native方法compareAndSet，执行CAS操作
+	        if (compareAndSet(current, next))
+	            //成功后才会返回期望值，否则无限循环
+	            return next;
+	    }
+	}
+compareAndSet方法实现：
+	JDK文档对该方法的说明如下：如果当前状态值等于预期值，则以原子方式将同步状态设置为给定的更新值。
+
+CAS：如果当前状态值等于预期值，则以原子方式将同步状态设置为给定的更新值。此操作具有volatile读和写的内存语义。

@@ -1,0 +1,14 @@
+构造方法：
+	public static ExecutorService newSingleThreadExecutor() {
+        return new FinalizableDelegatedExecutorService
+            (new ThreadPoolExecutor(1, 1,
+                                    0L, TimeUnit.MILLISECONDS,
+                                    new LinkedBlockingQueue<Runnable>()));
+    }
+
+这里的corePoolSize和maximumPoolSize都被设置为1，其它参数与FixedThreadPool相同。SingleThreadExecutor使用有界（队列的默认容量为Integer.
+MAX_VALUE，可以理解为无界）队列LinkedBlockingQueue作为线程池的工作队列，SingleThreadExecutor使用无界队列作为工作队列对线程池带来的影响和
+FixedThreadPool相同。
+	1、如果当前运行的线程数少于corePoolSize（即线程池中无运行的线程），则创建新线程来执行任务。
+	2、在线程池完成预热之后（当线程池中有一个运行的线程），将任务加入LinkedBlockingQueue。
+	3、线程执行完任务后，会在循环中反复从LinkedBlockingQueue获取任务来执行。

@@ -1,0 +1,7 @@
+LockSupport定义了一组的公共静态方法，这些方法提供了最基本的线程阻塞和唤醒功能，而LockSupport也成为构建同步组件的基础工具。
+
+LockSupport提供的阻塞和唤醒的方法：
+	1、void park()：阻塞当前线程，如果调用unpark(Thread t)方法获取当前线程被中断，才能从park()方法返回。
+	2、void parkNanos(long nanos)：阻塞当前线程，最长不超过nanos纳秒，返回条件在park()的基础上增加了超时返回。
+	3、void parkUntil(long deadline)：设置当前线程，直到deadline时间（从1970年开始到deadline时间的毫秒数）。
+	4、void unpark(Thread t)：唤醒处于阻塞状态的线程t。

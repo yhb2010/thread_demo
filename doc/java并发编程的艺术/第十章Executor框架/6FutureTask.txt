@@ -1,0 +1,17 @@
+当FutureTask处于未启动或已启动状态时，执行FutureTask.get()方法将导致调用线程阻塞；当FutureTask处于已完成状态状态时，执行
+FutureTask.get()方法将导致调用线程立即返回结果或抛出异常。
+
+当FutureTask处于未启动状态时，执行FutureTask.cancel()方法将导致此任务永远不会执行；当FutureTask处于已启动状态时，执行FutureTask
+.cancel(true)方法将以中断执行此任务线程的方式试图停止任务；当FutureTask处于已启动状态时，执行FutureTask.cancel(false)方法将不会
+对正在执行此任务的线程产生影响（让正在执行的任务运行完成）；当FutureTask处于已完成状态时，执行FutureTask.cancel(..)方法将返回false。
+
+FutureTask基于AQS（AbstractQueuedSynchronizer）实现的同步器，每一个基于AQS实现的同步器都包括下面两个步骤：
+	1、至少一个acquire操作。这个操作阻塞调用线程，除非/直到AQS的状态允许这个线程继续执行。FutureTask的acquire操作为get方法调用。
+	2、至少一个release操作。这个操作改变AQS的状态，改变后的状态可允许一个或多个阻塞线程被解除阻塞。FutureTask的release操作包括run
+	方法和cancel方法。
+
+当执行FutureTask.get方法时，如果FutureTask不是处于执行完成状态RAN或已取消状态CANCELLED，当前执行线程将到AQS的线程等待队列中等待。
+当某个线程执行FutureTask.run方法或FutureTask.cancel方法时，会唤醒线程等待队列中的第一个线程。
+假设开始时FutureTask处于未启动状态，等待队列中已经有三个线程a、b、c在等待。此时，线程d执行get方法将导致线程d也到等待队列中去等待。
+当线程e执行run方法时，会唤醒队列中的第一个线程a，线程a被唤醒后，首先把自己从队列中删除，然后唤醒他的后继线程b，最后线程a从get方法返回。
+线程b、cd重复线程a的处理流程。最终，在队列中等待的所有线程都被级联唤醒并从get方法返回。

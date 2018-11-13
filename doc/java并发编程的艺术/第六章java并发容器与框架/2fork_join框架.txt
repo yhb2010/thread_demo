@@ -1,0 +1,22 @@
+fork/join框架是用于并行执行任务的框架，是一个把大任务分割成若干小任务，最终汇总每个小任务结果后得到大任务结果的框架。
+fork就是把一个大任务切分为若干小任务并行的执行，join就是合并这些子任务的执行结果，最后得到这个大任务的结果。
+
+fork/join框架的设计：
+	1、分割任务
+	2、执行任务并合并结果
+	fork/join使用两个类来完成以上两件事情：
+	1、ForkJoinTask：我们要是用fork/join框架，必须首先创建一个ForkJoin任务，他提供在任务中执行fork和join方法的机制。通常情况下，我们不需要直接继承
+	ForkJoinTask类，只需要继承他的子类，fork/join框架提供了一下两个子类：
+	RecursiveAction：用于没有返回结果的任务。
+	RecursiveTask：用于有返回结果的任务。
+	2、ForkJoinPool：ForkJoinTask需要通过ForkJoinPool来执行。
+	任务分割出的子任务会添加到当前工作线程所维护的双端队列中，进入队列的头部。当一个工作线程的队列里暂时没有任务时，它会随机从其它工作线程的队列的尾部获取一个
+	任务。
+
+异常处理：
+	我们没有办法在主线程里直接捕获异常，所以ForkJoinTask提供了isCompletedAbnormally()方法来检查任务是否已经跑出异常或已经被取消了，并且可以通过
+	ForkJoinTask的getException()方法获取异常，例如：
+	if(task.isCompletedAbnormally()){
+		System.out.println(task.getException());
+	}
+	getException()方法返回Throwable对象，如果任务被取消了则返回CancellationException。如果任务没有完成或者没抛出异常则返回null。

@@ -1,0 +1,58 @@
+对于final域：
+	1、在构造函数内对一个final域的写入，与随后把这个被构造对象的引用赋值给一个引用变量，这两个操作之间不能重排序。
+	（编译器会在final域的写之后，构造函数return之前，插入一个StoreStore屏障。这个屏障禁止处理器把final域的写重排序到构造函数之外）
+	2、初次读一个包含final域的对象的引用，与随后初次读这个final域，这两个操作之间不能重排序。
+	public class FinalExample{
+		int i;//普通变量
+		final int j;//final变量
+		static FinalExample obj;
+
+		public FinalExample(){//构造函数
+			i =1;//写普通域
+			j =2;//写final域
+		}
+
+		public static void writer(){//写线程A执行
+			obj = new FinalExample();
+		}
+
+		public sttaic void reader(){//读线程B执行
+			FinalExample object = obj;//读对象引用
+			int a = object.i;//读普通域
+			int b = object.j;//读final域
+		}
+	}
+	假设线程A执行writer()，随后另一个线程B执行reader()方法。
+	写final域的重排序规则可以保证？：在对象引用为任意线程可见之前，对象的final域已经被正确初始化过了，而普通域不具备这个保障。在线程B看
+	到对象引用obj时，可能obj对象还没有构造完成（对普通域i的写操作被重排序到构造函数外，此时初始值1还没有写入普通域i）。
+
+	读final域的重排序规则可以确保：在读一个对象的final域之前，一定会先读包含这个final域的对象的引用。在这个实例中，如果该引用过不为
+	null，那么引用对象的final域一定已经被线程A初始化过了。
+
+final域为一个引用类型，对于引用类型，写final域的重排序规则对编译器和处理器增加了如下约束：在构造函数内对一个final引用的对象的成员域的写
+入，与随后在构造函数外把这个被构造对象的引用赋值给一个引用变量，这两个操作之间不能重排序。
+	public class FinalReferenceExample{
+		final int[] intArray;//final是引用类型
+		static FinalReferenceExample obj;
+
+		public FinalReferenceExample(){//构造函数
+			intArray = new int[1];//1
+			intArray[0] = 1;//2
+		}
+
+		public static void writerOne(){//写线程A执行
+			obj= new FinalReferenceExample();//3
+		}
+
+		public static void writerTwo(){//写线程B执行
+			obj.intArray[0] =2;//4
+		}
+
+		public static void reader(){//读线程C执行
+			if(obj!=null){//5
+				int tmp1 = obj.intArray[0];//6
+			}
+		}
+	}
+	jmm可以确保读线程c至少能看到写线程a在构造函数中对final引用对象的成员域的写入，即c至少能看到数据下标0的值为1.而写线程b对数组元素的
+	写入，读线程c可能看的到，也可能看不到。jmm不保证线程b的写入对读线程c课件，因为写线程b和读线程c之间存在数据竞争。

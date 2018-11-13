@@ -1,0 +1,7 @@
+public class A{
+	private static int a = 10;
+	private final static int b = 10;
+}
+
+其中，a在准备阶段不是10，而是初始值0，当然final修饰的b则还会是10，因为final修饰的静态变量(可直接计算得出结果)不会导致类的初始化，是一种被动引用，因此
+就不存在连接阶段了。

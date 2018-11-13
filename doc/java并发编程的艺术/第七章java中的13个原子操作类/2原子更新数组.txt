@@ -1,0 +1,7 @@
+AtomicIntegerArray：原子更新整形数组里的元素。
+AtomicLongArray：原子更新长整形数组里的元素。
+AtomicReferenceArray：原子更新引用类型数组里的元素。
+
+主要提供原子的方式更新数组里的内容，常用方法如下：
+	1、int addAndGet(int i, int delta)：以原子方式将输入值与数组中索引i的元素相加。
+	2、boolean compareAndSet(int i, int expect, int update)：如果当前值等于预期值，则以原子方式将数组位置i的元素设置成update值。

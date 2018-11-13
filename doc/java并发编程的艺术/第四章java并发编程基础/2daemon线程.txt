@@ -1,0 +1,6 @@
+daemon线程是一种支持型线程，因为它主要被用作程序中后台调度以及支持性工作。这意味着，当一个java虚拟机中不存在非daemon线程的时候，java虚拟机将会退出。
+可以通过调用Thread.setDaemon(true)将线程设置为Daemon线程。
+
+Daemon属性需要在线程启动前设置，不能在启动后设置。
+
+Daemon线程被用作完成支持型工作，但是在java虚拟机退出时Daemon线程中的finally块并不一定会执行。

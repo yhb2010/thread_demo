@@ -1,0 +1,14 @@
+构造方法：
+	public static ExecutorService newCachedThreadPool() {
+        return new ThreadPoolExecutor(0, Integer.MAX_VALUE,
+                                      60L, TimeUnit.SECONDS,
+                                      new SynchronousQueue<Runnable>());
+    }
+
+corePoolSize设置为0，即corePool为空；maximumPoolSize被设置为Integer.MAX_VALUE，即maximumPool是无界的。这里把keepAliveTime设置为60l，意味着
+CachedThreadPool中的空闲线程等待新任务的最长时间为60秒，空闲线程超过60秒后会被终止。如果60秒内主线程提交了新的任务，那么这个空闲线程将执行主线程提交的
+新任务。
+
+FixedTbhreadPool和SingleThreadExecutor使用无界队列LinkedBlockingQueue作为线程池的工作队列。CachedThreadPool使用没有容量的SynchronousQueue
+作为线程池的工作队列，但CachedThreadPool的maximumPool是无界的。这意味着，如果主线程提交任务的速度高于maximumPool中线程处理任务的速度时，
+CachedThreadPool会不断创建新线程。极端情况下，CachedThreadPool会因为创建过多线程而耗尽cpu的内存资源。

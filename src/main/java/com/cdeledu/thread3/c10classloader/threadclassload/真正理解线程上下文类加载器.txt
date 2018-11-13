@@ -1,0 +1,176 @@
+前言
+
+此前我对线程上下文类加载器（ThreadContextClassLoader，下文使用TCCL表示）的理解仅仅局限于下面这段话：
+Java 提供了很多服务提供者接口（Service Provider Interface，SPI），允许第三方为这些接口提供实现。常见的 SPI 有 JDBC、JCE、JNDI、JAXP 和 JBI 等。
+ 这些 SPI 的接口由 Java 核心库来提供，而这些 SPI 的实现代码则是作为 Java 应用所依赖的 jar 包被包含进类路径（CLASSPATH）里。SPI接口中的代码经常需要加载具体的实现类。那么问题来了，SPI的接口是Java核心库的一部分，是由启动类加载器(Bootstrap Classloader)来加载的；SPI的实现类是由系统类加载器(System ClassLoader)来加载的。引导类加载器是无法找到 SPI 的实现类的，因为依照双亲委派模型，BootstrapClassloader无法委派AppClassLoader来加载类。
+ 而线程上下文类加载器破坏了“双亲委派模型”，可以在执行线程中抛弃双亲委派加载链模式，使程序可以逆向使用类加载器。
+一直困恼我的问题就是，它是如何打破了双亲委派模型？又是如何逆向使用类加载器了？直到今天看了jdbc的驱动加载过程才茅塞顿开，其实并不复杂，只是一直没去看代码导致理解不够到位。
+
+JDBC案例分析
+我们先来看平时是如何使用mysql获取数据库连接的：
+	// 加载Class到AppClassLoader（系统类加载器），然后注册驱动类
+	// Class.forName("com.mysql.jdbc.Driver").newInstance(); 
+	String url = "jdbc:mysql://localhost:3306/testdb";    
+	// 通过java库获取数据库连接
+	Connection conn = java.sql.DriverManager.getConnection(url, "name", "password"); 12345
+以上就是mysql注册驱动及获取connection的过程，各位可以发现经常写的Class.forName被注释掉了，但依然可以正常运行，这是为什么呢？这是因为从Java1.6开始自带的jdbc4.0版本已支持SPI服务加载机制，只要mysql的jar包在类路径中，就可以注册mysql驱动。
+那到底是在哪一步自动注册了mysql driver的呢？重点就在DriverManager.getConnection()中。我们都是知道调用类的静态方法会初始化该类，进而执行其静态代码块，DriverManager的静态代码块就是：
+	static {
+	    loadInitialDrivers();
+	    println("JDBC DriverManager initialized");
+	}
+初始化方法loadInitialDrivers()的代码如下：
+	private static void loadInitialDrivers() {
+	    String drivers;
+	    try {
+	        // 先读取系统属性
+	        drivers = AccessController.doPrivileged(new PrivilegedAction<String>() {
+	            public String run() {
+	                return System.getProperty("jdbc.drivers");
+	            }
+	        });
+	    } catch (Exception ex) {
+	        drivers = null;
+	    }
+	    // 通过SPI加载驱动类
+	    AccessController.doPrivileged(new PrivilegedAction<Void>() {
+	        public Void run() {
+	            ServiceLoader<Driver> loadedDrivers = ServiceLoader.load(Driver.class);
+	            Iterator<Driver> driversIterator = loadedDrivers.iterator();
+	            try{
+	                while(driversIterator.hasNext()) {
+	                    driversIterator.next();
+	                }
+	            } catch(Throwable t) {
+	                // Do nothing
+	            }
+	            return null;
+	        }
+	    });
+	    // 继续加载系统属性中的驱动类
+	    if (drivers == null || drivers.equals("")) {
+	        return;
+	    }
+	
+	    String[] driversList = drivers.split(":");
+	    println("number of Drivers:" + driversList.length);
+	    for (String aDriver : driversList) {
+	        try {
+	            println("DriverManager.Initialize: loading " + aDriver);
+	            // 使用AppClassloader加载
+	            Class.forName(aDriver, true,
+	                    ClassLoader.getSystemClassLoader());
+	        } catch (Exception ex) {
+	            println("DriverManager.Initialize: load failed: " + ex);
+	        }
+	    }
+	}
+从上面可以看出JDBC中的DriverManager的加载Driver的步骤顺序依次是： 
+1. 通过SPI方式，读取 META-INF/services 下文件中的类名，使用TCCL加载； 
+2. 通过System.getProperty("jdbc.drivers")获取设置，然后通过系统类加载器加载。 
+下面详细分析SPI加载的那段代码。
+
+JDBC中的SPI
+先来看看什么是SP机制，引用一段博文中的介绍：
+	SPI机制简介 
+	SPI的全名为Service Provider Interface，主要是应用于厂商自定义组件或插件中。在java.util.ServiceLoader的文档里有比较详细的介绍。简单的总结下java SPI机制的思想：我们系统里抽象的各个模块，往往有很多不同的实现方案，比如日志模块、xml解析模块、jdbc模块等方案。面向的对象的设计里，我们一般推荐模块之间基于接口编程，模块之间不对实现类进行硬编码。一旦代码里涉及具体的实现类，就违反了可拔插的原则，如果需要替换一种实现，就需要修改代码。为了实现在模块装配的时候能不在程序里动态指明，这就需要一种服务发现机制。 Java SPI就是提供这样的一个机制：为某个接口寻找服务实现的机制。有点类似IOC的思想，就是将装配的控制权移到程序之外，在模块化设计中这个机制尤其重要。 
+	SPI具体约定 
+	Java SPI的具体约定为：当服务的提供者提供了服务接口的一种实现之后，在jar包的META-INF/services/目录里同时创建一个以服务接口命名的文件。该文件里就是实现该服务接口的具体实现类。而当外部程序装配这个模块的时候，就能通过该jar包META-INF/services/里的配置文件找到具体的实现类名，并装载实例化，完成模块的注入。基于这样一个约定就能很好的找到服务接口的实现类，而不需要再代码里制定。jdk提供服务实现查找的一个工具类：java.util.ServiceLoader。
+知道SPI的机制后，我们来看刚才的代码：
+	ServiceLoader<Driver> loadedDrivers = ServiceLoader.load(Driver.class);
+	Iterator<Driver> driversIterator = loadedDrivers.iterator();
+	try{
+	    while(driversIterator.hasNext()) {
+	        driversIterator.next();
+	    }
+	} catch(Throwable t) {
+	// Do nothing
+	}
+注意driversIterator.next()最终就是调用Class.forName(DriverName, false, loader)方法，也就是最开始我们注释掉的那一句代码。好，那句因SPI而省略的代码现在解释清楚了，那我们继续看给这个方法传的loader是怎么来的。
+因为这句Class.forName(DriverName, false, loader)代码所在的类在java.util.ServiceLoader类中，而ServiceLoader.class又加载在BootrapLoader中，因此传给 forName 的 loader 必然不能是BootrapLoader，复习双亲委派加载机制请看：java类加载器不完整分析 。这时候只能使用TCCL了，也就是说把自己加载不了的类加载到TCCL中（通过Thread.currentThread()获取，简直作弊啊！）。上面那篇文章末尾也讲到了TCCL默认使用当前执行的是代码所在应用的系统类加载器AppClassLoader。
+再看下看ServiceLoader.load(Class)的代码，的确如此：
+	public static <S> ServiceLoader<S> load(Class<S> service) {
+	    ClassLoader cl = Thread.currentThread().getContextClassLoader();
+	    return ServiceLoader.load(service, cl);
+	}
+ContextClassLoader默认存放了AppClassLoader的引用，由于它是在运行时被放在了线程中，所以不管当前程序处于何处（BootstrapClassLoader或是ExtClassLoader等），在任何需要的时候都可以用Thread.currentThread().getContextClassLoader()取出应用程序类加载器来完成需要的操作。
+到这儿差不多把SPI机制解释清楚了。直白一点说就是，我（JDK）提供了一种帮你（第三方实现者）加载服务（如数据库驱动、日志库）的便捷方式，只要你遵循约定（把类名写在/META-INF里），那当我启动时我会去扫描所有jar包里符合约定的类名，再调用forName加载，但我的ClassLoader是没法加载的，那就把它加载到当前执行线程的TCCL里，后续你想怎么操作（驱动实现类的static代码块）就是你的事了。
+
+好，刚才说的驱动实现类就是com.mysql.jdbc.Driver.Class，它的静态代码块里头又写了什么呢？是否又用到了TCCL呢？我们继续看下一个例子。
+使用TCCL校验实例的归属
+com.mysql.jdbc.Driver加载后运行的静态代码块:
+	static {
+	    try {
+	        // Driver已经加载到TCCL中了，此时可以直接实例化
+	        java.sql.DriverManager.registerDriver(new com.mysql.jdbc.Driver());
+	    } catch (SQLException E) {
+	        throw new RuntimeException("Can't register driver!");
+	    }
+	}
+registerDriver方法将driver实例注册到系统的java.sql.DriverManager类中，其实就是add到它的一个名为registeredDrivers的静态成员CopyOnWriteArrayList中 。
+
+到此驱动注册基本完成，接下来我们回到最开始的那段样例代码：java.sql.DriverManager.getConnection()。它最终调用了以下方法：
+	private static Connection getConnection(
+	     String url, java.util.Properties info, Class<?> caller) throws SQLException {
+	     /* 传入的caller由Reflection.getCallerClass()得到，该方法
+	      * 可获取到调用本方法的Class类，这儿调用者是java.sql.DriverManager（位于/lib/rt.jar中），
+	      * 也就是说caller.getClassLoader()本应得到Bootstrap启动类加载器
+	      * 但是在上篇文章[java类加载器不完整分析]中讲到过启动类加载器无法被程序获取，所以只会得到null
+	      */
+	     ClassLoader callerCL = caller != null ? caller.getClassLoader() : null;
+	     synchronized(DriverManager.class) {
+	         // 此处再次获取线程上下文类加载器，用于后续校验
+	         if (callerCL == null) {
+	             callerCL = Thread.currentThread().getContextClassLoader();
+	         }
+	     }
+	
+	     if(url == null) {
+	         throw new SQLException("The url cannot be null", "08001");
+	     }
+	
+	     SQLException reason = null;
+	     // 遍历注册到registeredDrivers里的Driver类
+	     for(DriverInfo aDriver : registeredDrivers) {
+	         // 使用线程上下文类加载器检查Driver类有效性，重点在isDriverAllowed中，方法内容在后面
+	         if(isDriverAllowed(aDriver.driver, callerCL)) {
+	             try {
+	                 println("    trying " + aDriver.driver.getClass().getName());
+	                 // 调用com.mysql.jdbc.Driver.connect方法获取连接
+	                 Connection con = aDriver.driver.connect(url, info);
+	                 if (con != null) {
+	                     // Success!
+	                     return (con);
+	                 }
+	             } catch (SQLException ex) {
+	                 if (reason == null) {
+	                     reason = ex;
+	                 }
+	             }
+	
+	         } else {
+	             println("    skipping: " + aDriver.getClass().getName());
+	         }
+	
+	     }
+		throw new SQLException("No suitable driver found for "+ url, "08001");
+	}
+	
+	private static boolean isDriverAllowed(Driver driver, ClassLoader classLoader) {
+	    boolean result = false;
+	    if(driver != null) {
+	        Class<?> aClass = null;
+	        try {
+	        // 传入的classLoader为调用getConnetction的线程上下文类加载器，从中寻找driver的class对象
+	            aClass =  Class.forName(driver.getClass().getName(), true, classLoader);
+	        } catch (Exception ex) {
+	            result = false;
+	        }
+	    // 注意，只有同一个类加载器中的Class使用==比较时才会相等，此处就是校验用户注册Driver时该Driver所属的类加载器与调用时的是否同一个
+	    // driver.getClass()拿到就是当初执行Class.forName("com.mysql.jdbc.Driver")时的应用AppClassLoader
+	        result = ( aClass == driver.getClass() ) ? true : false;
+	    }
+	
+	    return result;
+	}
+可以看到这儿TCCL的作用主要用于校验存放的driver是否属于调用线程的Classloader。例如在下文中的tomcat里，多个webapp都有自己的Classloader，如果它们都自带 mysql-connect.jar包，那底层Classloader的DriverManager里将注册多个不同类加载器的Driver实例，想要区分只能靠TCCL了。

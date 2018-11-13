@@ -1,0 +1,5 @@
+如果有一个线程处理的比较慢，我们不可能让主线程一直等待，所以可以使用另一个带指定时间的await方法——await(long time, TimeUnit unit)，这个方法等待特定时间
+后，就不会再阻塞当前线程。
+
+注意：计数器必须大于等于0，只是等于0时，计数器就是零，调用await方法时不会阻塞当前线程。CountDownLatch不可能重新初始化或者修改CountDownLatch对象的内部
+计数器的值。一个线程调用countDown方法happens-before另外一个线程调用await方法。

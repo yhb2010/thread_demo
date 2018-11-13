@@ -1,0 +1,8 @@
+对于ThreadLocal使用前或者使用后一定要先remove
+当前基本所有的项目都使用了线程池技术，这非常好，可以动态配置线程数、可以重用线程。
+然而，如果你在项目中使用到了ThreadLocal，一定要记得使用前或者使用后remove一下。这是因为上面提到了线程池技术做的是一个线程重用，这意味着代码运行过程
+中，一条线程使用完毕，并不会被销毁而是等待下一次的使用。我们看一下Thread类中，持有ThreadLocal.ThreadLocalMap的引用：
+	/* ThreadLocal values pertaining to this thread. This map is maintained  * by the ThreadLocal class. */
+	ThreadLocal.ThreadLocalMap threadLocals = null;
+线程不销毁意味着上条线程set的ThreadLocal.ThreadLocalMap中的数据依然存在，那么在下一条线程重用这个Thread的时候，很可能get到的是上条线程set的数
+据而不是自己想要的内容。

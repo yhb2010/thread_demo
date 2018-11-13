@@ -1,0 +1,46 @@
+理解volatile特性的一个好办法是把对volatile变量的单个读/写，看成是使用一个锁对这些单个读/写操作做了同步。下面通过具体例子看一下：
+class demo {
+	volatile long v1 = 0l;
+
+	public void set(long l){
+		v1 = l;//单个volatile变量的写
+	}
+
+	public void increment(){
+		v1++;//复合(多个)volatile变量的读/写
+	}
+
+	public long get(){
+		return v1;//单个volatile变量的读
+	}
+}
+假设有多个线程分别调用上面程序的3个方法，这个程序在语义上和下面程序等价：
+class demo {
+	long v1 = 0l;
+
+	public synchronized void set(long l){
+		v1 = l;//对单个普通变量的写用同一个锁同步
+	}
+
+	public void increment(){//普通方法调用
+		long tmp = get();//调用已同步的读方法
+		tmp += 1l;//普通写操作
+		set(tmp);//调用已同步的写方法
+	}
+
+	public synchronized long get(){
+		return v1;//对单个的普通变量的读用同一个锁同步
+	}
+}
+如上面所示程序，一个volatile变量的单个读/写操作，与一个普通变量的读/写操作都是使用同一个锁来同步，他们之间的执行效果相同。
+锁的happens-before规则保证释放锁和获取锁的两个线程之间的内存可见性，这意味着，对一个volatile变量的读，总是能看到(任意线程)对这个volatile变量最后的写
+入。
+锁的语义决定了临界区代码的执行具有原子性。这意味着，即使是64位的long型和double型变量，只要它是volatile变量，对该变量的读/写就具有原子性。如果是多个
+volatile操作或类似volatile++这种复合操作，这些操作整体上不具有原子性。
+
+简言之，volatile变量自身具有下列特性：
+	1、可见性。对一个volatile变量的读，总是能看到(任意线程)对这个volatile变量最后的写入。
+	2、原子性。对任意单个volatile变量的读/写具有原子性，但类似于volatile++这种复合操作不具有原子性。
+
+根据volatile的happens-before规则，释放锁的线程在写volatile变量之前可见的共享变量，在获取锁的线程读取同一个volatile变量后将立即变得对获取锁的线程可
+见。

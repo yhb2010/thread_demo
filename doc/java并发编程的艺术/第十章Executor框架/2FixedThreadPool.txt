@@ -1,0 +1,20 @@
+构造方法：
+	public static ExecutorService newFixedThreadPool(int nThreads) {
+        return new ThreadPoolExecutor(nThreads, nThreads,
+                                      0L, TimeUnit.MILLISECONDS,
+                                      new LinkedBlockingQueue<Runnable>());
+    }
+
+这里的corePoolSize和maximumPoolSize都被设置为创建FixedThreadPool时指定的参数nThreads。
+当线程池中的线程数大于corePoolSize时，keepAliveTime为多余的空闲线程等待新任务的最长时间，超过这个时间后多余的线程将被终止。这里把keepAliveTime设置为
+0l，意味着多余的空闲线程会被立即终止。
+
+	1、如果当前运行的线程数少于corePoolSize，则创建新线程来执行任务。
+	2、在线程池完成预热之后（当前运行的线程数等于corePoolSize），将任务加入LinkedBlockingQueue。
+	3、线程执行完任务后，会在循环中反复从LinkedBlockingQueue获取任务来执行。
+	LinkedBlockingQueue是有界队列，使用它作为工作队列（队列的默认容量为Integer.MAX_VALUE，可以理解为无界）。使用无界队列作为工作队列对线程池带来的影
+	响如下：
+	1、当线程池中的线程数达到corePoolSize后，新任务将在无界队列中等待，因此线程池中的线程数不会超过corePoolSize。
+	2、由于1，使用无界队列时maximumPoolSize将是一个无效参数。
+	3、由于1和2，使用无界队列时keepAliveTime将是一个无效参数。
+	4、由于使用无界队列，运行中的FixedThreadPool（未执行方法shutdown）不会拒绝任务（不会调用RejectedExecutionHandle.rejectedExecution方法）。

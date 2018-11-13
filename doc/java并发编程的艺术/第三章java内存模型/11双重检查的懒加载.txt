@@ -1,0 +1,51 @@
+1、对一个volatile变量的写操作，只有所有步骤完成，才能被其它线程读取到。
+2、多个线程对volatile变量的写操作本质上是有先后顺序的。也就是说并发写没有问题。
+这样说也许读者感觉不到和非volatile变量有什么区别，我来举个例子：
+	//线程1初始化User
+	User user;
+	user = new User();
+	//线程2读取user
+	if(user!=null){
+		user.getName();
+	}
+在多线程并发环境下，线程2读取到的user可能未初始化完成。
+具体来看User user = new User的语义：
+	1：分配对象的内存空间
+	2：初始化对象
+	3：设置user指向刚分配的内存地址
+	步骤2和步骤3可能会被重排序，流程变为1->3->2。
+这样线程1在执行完第3步而还没来得及执行完第2步的时候，如果内存刷新到了主存，那么线程2将得到一个未初始化完成的对象。因此如果将user声明为volatile的，
+那么步骤2,3将不会被重排序。
+
+下面我们来看一个具体案例，一个基于双重检查的懒加载的单例模式实现：
+	public class Test{
+		private static User instance;
+
+		public static User getInstance(){
+			if(instance == null){
+				synchronized(Test.class){
+					if(instance == null){
+						instance = new Instance();//步骤4
+					}
+				}
+			}
+		}
+	}
+这个单例模式看起来很完美，如果instance为空，则加锁，只有一个线程进入同步块完成对象的初始化，然后instance不为空，那么后续的所有线程获取instance都不
+用加锁，从而提升了性能。但是我们刚才讲了对象赋值操作步骤可能会存在重排序，即当前线程的步骤4执行到一半，其它线程如果进来执行到步骤1，instance已经不为
+null，因此将会读取到一个没有初始化完成的对象。
+但如果将instance用volatile来修饰，就完全不一样了，对instance的写入操作将会变成一个原子操作，没有初始化完，就不会被刷新到主存中。
+修改后的单例模式代码如下：
+	public class Test{
+		private volatile static User instance;
+
+		public static User getInstance(){
+			if(instance == null){
+				synchronized(Test.class){
+					if(instance == null){
+						instance = new Instance();//步骤4
+					}
+				}
+			}
+		}
+	}

@@ -1,0 +1,4 @@
+AtomicReference：原子更新引用类型。
+AtomicReferenceFieldUpdater：原子更新引用类型里的字段。
+AtomicMarkableReference：原子更新带有标记位的引用类型。可以原子更新一个布尔类型的标记位和引用类型。构造方法是AtomicMarkableReference(V initialRef,
+boolean initialMark)。

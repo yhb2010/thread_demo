@@ -1,0 +1,15 @@
+thread的所有构造函数，最终都会去调用一个静态方法init，源码片段如下：
+	private void init(ThreadGroup g, Runnable target, String name, long stackSize, AccessControlContext acc){
+		if(name == null){
+			throw new NullPointerException("name cannot be null");
+		}
+		this.name = name.toCharArray();
+		Thread parent = currentThread();//获取当前线程作为父线程
+		SecurityManager security = System.getSecurityManager();
+	}
+
+在线程的生命周期中，我们说过线程的最初状态为new，没有执行start方法之前，他只能算是一个thread实例，
+并不意味着一个新的线程被创建，因此currentThread()代表的将会是创建它的那个线程，因此我们可以得出结论：
+	1、一个线程的创建肯定是由另一个线程完成的
+	2、被创建线程父线程是创建它的线程
+	我们知道main函数所在的线程是由jvm创建的，也就是main线程，那就意味着我们前面创建的所有线程，其父线程都是main线程。
